@@ -13,7 +13,6 @@ public interface IReservationRepository
     // Gibt false zurück, wenn die Reservierung nicht gespeichert werden konnte.
     bool TrySave(Reservation reservation);
 
-    // Speichert alle Reservierungen atomar: entweder alle oder keine.
     bool TrySaveBatch(IReadOnlyList<Reservation> reservations);
 }
 
@@ -81,11 +80,6 @@ public sealed class ReservationService
 
         foreach (var request in requests)
         {
-            if (request is null)
-            {
-                throw new ArgumentException("Eine Reservierung darf nicht null sein.", nameof(requests));
-            }
-
             if (string.IsNullOrWhiteSpace(request.CustomerEmail))
             {
                 throw new ArgumentException("Eine E-Mail-Adresse ist erforderlich.", nameof(requests));
@@ -98,11 +92,10 @@ public sealed class ReservationService
 
             if (request.SeatCount <= 0)
             {
-                throw new ArgumentOutOfRangeException(nameof(requests), "Die Platzanzahl muss positiv sein.");
+                throw new ArgumentOutOfRangeException(nameof(requests));
             }
         }
 
-        // Pro Veranstaltung die angefragten Plätze addieren und die Verfügbarkeit genau einmal abfragen.
         var enoughSeatsPerEvent = requests
             .GroupBy(request => request.EventCode)
             .Select(group => _availability.GetAvailableSeats(group.Key) >= group.Sum(request => request.SeatCount))

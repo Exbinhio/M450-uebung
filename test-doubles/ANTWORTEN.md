@@ -1,40 +1,23 @@
-# Antworten – Testen mit Test Doubles
+# Antworten
 
-Gewähltes Testframework: **xUnit** (`tests/TestDoublesExercise.Tests`)
+## Aufgabe 1
 
-```bash
-dotnet test tests/TestDoublesExercise.Tests/TestDoublesExercise.Tests.csproj
-```
+`ReservationService` hängt nur von der Schnittstelle `ISeatAvailability` ab. Deshalb können wir im Test einen eigenen Stub übergeben, der feste Werte liefert, und den Service testen, obwohl es noch keine echte Implementierung gibt.
 
-| Datei | Inhalt |
-| --- | --- |
-| `tests/TestDoublesExercise.Tests/ReservationTestDoubles.cs` | Selbst geschriebene Doubles (Stub, Spies, einfache Doubles) |
-| `tests/TestDoublesExercise.Tests/ReservationServiceTests.cs` | Tests für Aufgaben 1–5 |
-| `tests/TestDoublesExercise.Tests/ReserveBatchTests.cs` | Tests für die Gruppenreservierung |
-| `test-doubles/ReservationService.cs` | Erweitert um `ReserveBatch` und `TrySaveBatch` |
+Die Schnittstelle sagt nur aus, dass `GetAvailableSeats` einen Veranstaltungscode als `string` erhält und eine Anzahl als `int` zurückgibt. Wie diese Zahl zustande kommt, legt sie nicht fest.
 
-## Aufgabe 1 – Nur die Schnittstelle ist bekannt
+Fachliche Annahme: `GetAvailableSeats` liefert die Anzahl der noch freien Plätze der Veranstaltung. Eine Reservierung ist möglich, wenn diese Zahl mindestens so gross ist wie die angefragte Platzanzahl.
 
-Der `ReservationService` hängt nur von der Schnittstelle `ISeatAvailability` ab, nicht von einer konkreten Klasse. Darum können wir im Test einen eigenen Stub übergeben, der feste Werte liefert, und den Service so testen, bevor es eine echte Implementierung gibt.
+## Aufgabe 3
 
-**Was die Schnittstelle bereits sagt:** Es gibt eine Methode `GetAvailableSeats`, die einen Veranstaltungscode (`string`) entgegennimmt und eine Anzahl (`int`) zurückgibt. Mehr nicht – wie die Zahl berechnet wird, woher sie kommt oder wie mit unbekannten Codes umgegangen wird, ist offen.
+Der Stub (`SeatAvailabilityStub`) liefert dem Service nur vorgegebene Daten, während der Spy (`ConfirmationSenderSpy`) die Aufrufe mit ihren Argumenten aufzeichnet, damit der Test sie nachher prüfen kann.
 
-**Unsere fachliche Annahme:** `GetAvailableSeats(eventCode)` liefert die Anzahl der aktuell noch freien Plätze dieser Veranstaltung (≥ 0). Eine Reservierung ist möglich, wenn diese Zahl grösser oder gleich der angefragten Platzanzahl ist. Für unbekannte Codes liefert unser Stub 0.
+## Aufgabe 5
 
-## Aufgabe 2 – Fehlende Aufrufe sichtbar machen
+Für die Verfügbarkeit und den Sender verwenden wir die handgeschriebenen Spies, weil sie schon vorhanden sind und sich mit `Assert.Empty` einfach prüfen lässt, dass sie nicht aufgerufen wurden. Für das Repository verwenden wir Moq, weil `Verify(..., Times.Never())` ohne eigenen Code direkt ausdrückt, dass kein Speicherversuch stattgefunden hat.
 
-Ohne Produktionscode zu ändern, übergeben wir Doubles, die jeden Aufruf aufzeichnen (`SeatAvailabilitySpy`, `ReservationRepositorySpy`, `ConfirmationSenderSpy`). Nach dem Test prüfen wir, dass ihre Aufzeichnungen leer sind. Alternativ ginge das mit Moq über `Verify(..., Times.Never())` bzw. `VerifyNoOtherCalls()`.
+## Gruppenreservierung: Exception in `Send`
 
-## Aufgabe 3 – Stub vs. Spy
+Wirft `Send` nach erfolgreichem Speichern eine Exception, sind die Reservierungen gespeichert, aber der Aufrufer erhält eine Exception statt `true` und hält die Reservierung für fehlgeschlagen. Reserviert er erneut, werden Plätze doppelt belegt. Bei `ReserveBatch` erhalten ausserdem nur die Kunden vor dem Fehler eine Bestätigung.
 
-Unser **Stub** (`SeatAvailabilityStub`) liefert dem Service nur vorgegebene Daten (freie Plätze), während unser **Spy** (`ConfirmationSenderSpy`) aufzeichnet, welche Reservierungen ihm übergeben wurden, damit der Test diese Aufrufe nachher prüfen kann.
-
-## Aufgabe 5 – Handgeschrieben oder Moq?
-
-Für die Verfügbarkeit und den Sender verwenden wir die handgeschriebenen Spies, weil sie bereits existieren und die Prüfung mit `Assert.Empty(...)` sehr gut lesbar ist. Für das Repository verwenden wir Moq, weil `Verify(..., Times.Never())` zusammen mit `VerifyNoOtherCalls()` ohne zusätzlichen Code ausdrückt, dass weder `TrySave` noch `TrySaveBatch` aufgerufen wurde. So sieht man in einem Test auch direkt, dass beide Ansätze dasselbe Ziel erreichen.
-
-## Fortgeschrittene – Exception in `Send` nach erfolgreichem Speichern
-
-Wirft `Send` nach dem Speichern eine Exception, ist die Reservierung in der Datenbank gespeichert, der Aufrufer bekommt aber eine Exception statt `true`. Er glaubt dann womöglich, die Reservierung sei fehlgeschlagen, und versucht es erneut – das führt zu doppelten Reservierungen. Bei `ReserveBatch` kann es zudem passieren, dass nur ein Teil der Kunden eine Bestätigung erhält, obwohl alle Plätze reserviert sind.
-
-**Mögliche fachliche Lösung:** Das Speichern der Reservierung ist das entscheidende Ereignis; die Bestätigung wird davon entkoppelt. Die Reservierung gilt als erfolgreich, sobald sie gespeichert ist, und der Bestätigungsversand wird als „ausstehend“ vermerkt und später erneut versucht (z. B. über eine Warteschlange bzw. Outbox). Gelingt der Versand dauerhaft nicht, wird der Kundendienst informiert, der den Kunden manuell kontaktiert.
+Mögliche fachliche Lösung: Eine Reservierung gilt als erfolgreich, sobald sie gespeichert ist. Kann die Bestätigung nicht versendet werden, wird sie als ausstehend vermerkt und später erneut versendet.
